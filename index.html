@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Brutal Escape Game</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      font-family: sans-serif;
+    }
+
+    canvas {
+      background: #222;
+      display: block;
+      margin: 0 auto;
+      border: 2px solid #444;
+    }
+
+    #joystickArea {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      touch-action: none;
+    }
+
+    #stick {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: #eee;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    #gantiWarnaBtn, #restartBtn {
+      background-color: #fff;
+      border: 2px solid #888;
+      color: #000;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: sans-serif;
+      margin: 12px auto;
+      display: block;
+      cursor: pointer;
+    }
+
+    #restartBtn {
+      display: none;
+    }
+
+    #gameOverText {
+      text-align: center;
+      font-size: 24px;
+      color: red;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+
+    #timerDisplay {
+      text-align: center;
+      font-size: 20px;
+      color: white;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="timerDisplay">Waktu: 0.00s | Rekor: 0.00s</div>
+<canvas id="gameCanvas" width="600" height="600"></canvas>
+<button id="gantiWarnaBtn">Ubah Warna Karakter</button>
+<button id="restartBtn">Mulai Ulang</button>
+<div id="joystickArea"><div id="stick"></div></div>
+<div id="gameOverText"></div>
+
+<script>
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let gameOver = false;
+  let timer = 0;
+  let bestTime = 0;
+  let startTime = 0;
+
+  const circle = {
+    x: 300,
+    y: 300,
+    radius: 20,
+    color: 'cyan',
+    vx: 0,
+    vy: 0,
+    speed: 5
+  };
+
+  let enemies = [];
+  let bullets = [];
+
+  function spawnEnemies(count) {
+    enemies = [];
+    for (let i = 0; i < count; i++) {
+      enemies.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        radius: 15,
+        color: 'red',
+        vx: (Math.random() - 0.5) * 6,
+        vy: (Math.random() - 0.5) * 6
+      });
+    }
+  }
+
+  function spawnBullet(fromEdge) {
+    let bullet = {
+      x: 0,
+      y: 0,
+      radius: 6,
+      color: 'orange',
+      vx: 0,
+      vy: 0
+    };
+
+    switch (fromEdge) {
+      case 'top':
+        bullet.x = Math.random() * canvas.width;
+        bullet.y = 0;
+        bullet.vx = (Math.random() - 0.5) * 4;
+        bullet.vy = 5;
+        break;
+      case 'bottom':
+        bullet.x = Math.random() * canvas.width;
+        bullet.y = canvas.height;
+        bullet.vx = (Math.random() - 0.5) * 4;
+        bullet.vy = -5;
+        break;
+      case 'left':
+        bullet.x = 0;
+        bullet.y = Math.random() * canvas.height;
+        bullet.vx = 5;
+        bullet.vy = (Math.random() - 0.5) * 4;
+        break;
+      case 'right':
+        bullet.x = canvas.width;
+        bullet.y = Math.random() * canvas.height;
+        bullet.vx = -5;
+        bullet.vy = (Math.random() - 0.5) * 4;
+        break;
+    }
+
+    bullets.push(bullet);
+  }
+
+  function drawCircle(obj) {
+    ctx.beginPath();
+    ctx.arc(obj.x, obj.y, obj.radius, 0, Math.PI * 2);
+    ctx.fillStyle = obj.color;
+    ctx.fill();
+  }
+
+  function update() {
+    if (gameOver) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Update waktu
+    timer = (performance.now() - startTime) / 1000;
+    document.getElementById("timerDisplay").textContent = `Waktu: ${timer.toFixed(2)}s | Rekor: ${bestTime.toFixed(2)}s`;
+
+    // Player
+    circle.x += circle.vx;
+    circle.y += circle.vy;
+    circle.x = Math.max(circle.radius, Math.min(canvas.width - circle.radius, circle.x));
+    circle.y = Math.max(circle.radius, Math.min(canvas.height - circle.radius, circle.y));
+    drawCircle(circle);
+
+    // Enemies
+    enemies.forEach(enemy => {
+      enemy.x += enemy.vx;
+      enemy.y += enemy.vy;
+      if (enemy.x < enemy.radius || enemy.x > canvas.width - enemy.radius) enemy.vx *= -1;
+      if (enemy.y < enemy.radius || enemy.y > canvas.height - enemy.radius) enemy.vy *= -1;
+      drawCircle(enemy);
+
+      const dx = circle.x - enemy.x;
+      const dy = circle.y - enemy.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < circle.radius + enemy.radius) endGame();
+    });
+
+    // Bullets
+    bullets.forEach(b => {
+      b.x += b.vx;
+      b.y += b.vy;
+      drawCircle(b);
+
+      const dx = circle.x - b.x;
+      const dy = circle.y - b.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < circle.radius + b.radius) endGame();
+    });
+
+    // Hapus peluru yang keluar layar
+    bullets = bullets.filter(b => b.x > -10 && b.x < canvas.width + 10 && b.y > -10 && b.y < canvas.height + 10);
+
+    requestAnimationFrame(update);
+  }
+
+  function endGame() {
+    gameOver = true;
+    document.getElementById("gameOverText").textContent = "GAME OVER!";
+    document.getElementById("restartBtn").style.display = "block";
+
+    if (timer > bestTime) {
+      bestTime = timer;
+      document.getElementById("timerDisplay").textContent = `Waktu: ${timer.toFixed(2)}s | Rekor: ${bestTime.toFixed(2)}s`;
+    }
+  }
+
+  function restartGame() {
+    gameOver = false;
+    bullets = [];
+    spawnEnemies(10);
+    circle.x = 300;
+    circle.y = 300;
+    circle.vx = 0;
+    circle.vy = 0;
+    startTime = performance.now();
+    document.getElementById("gameOverText").textContent = "";
+    document.getElementById("restartBtn").style.display = "none";
+    update();
+  }
+
+  spawnEnemies(10);
+  startTime = performance.now();
+  update();
+  setInterval(() => {
+    if (!gameOver) {
+      spawnBullet('top');
+      spawnBullet('bottom');
+      spawnBullet('left');
+      spawnBullet('right');
+    }
+  }, 300);
+
+  // Joystick
+  const joystick = document.getElementById('joystickArea');
+  const stick = document.getElementById('stick');
+  const centerX = joystick.offsetWidth / 2;
+  const centerY = joystick.offsetHeight / 2;
+
+  joystick.addEventListener('touchmove', function(e) {
+    if (gameOver) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = joystick.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), 50);
+    const angle = Math.atan2(dy, dx);
+
+    const stickX = centerX + distance * Math.cos(angle);
+    const stickY = centerY + distance * Math.sin(angle);
+    stick.style.left = stickX + 'px';
+    stick.style.top = stickY + 'px';
+
+    circle.vx = Math.cos(angle) * (distance / 50) * circle.speed;
+    circle.vy = Math.sin(angle) * (distance / 50) * circle.speed;
+  });
+
+  joystick.addEventListener('touchend', function(e) {
+    circle.vx = 0;
+    circle.vy = 0;
+    stick.style.left = '50%';
+    stick.style.top = '50%';
+  });
+
+  document.getElementById('gantiWarnaBtn').addEventListener('click', () => {
+    circle.color = getRandomColor();
+  });
+
+  document.getElementById('restartBtn').addEventListener('click', () => {
+    restartGame();
+  });
+
+  function getRandomColor() {
+    const letters = '0123456789ABCDEF';
+    let color = '#';
+    for (let i = 0; i < 6; i++) color += letters[Math.floor(Math.random() * 16)];
+    return color;
+  }
+</script>
+
+</body>
+</html>
